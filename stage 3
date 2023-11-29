@@ -1,0 +1,119 @@
+#@title Importing necessary libraries
+
+from datetime import datetime
+import os
+import time
+
+from google.colab import drive, files
+from pathlib import Path
+from subprocess import run
+from tqdm.notebook import tqdm
+#@title Installing packages
+
+!pip install cohere openai -q
+!pip install git+https://github.com/openai/whisper.git -q
+!pip install stable-ts -q
+!pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116 -q
+#@title Importing API libraries
+
+import stable_whisper
+import whisper
+import torch
+#@title Connecting to your google drive
+
+drive.mount("/content/gdrive")
+colab_folder = r'/content/gdrive/MyDrive/Colab Notebooks/'
+main_folder = Path(colab_folder) / 'translangg/'
+path_folder_input = Path(main_folder) / 'input'
+path_folder_output = Path(main_folder) / 'output'
+#@title Set folders and create if not exists
+
+for folder_path in [colab_folder, main_folder, path_folder_input, path_folder_output]:
+  if not Path(folder_path).exists():
+    Path(folder_path).mkdir()
+# Follow the steps:
+
+Access your google drive at https://drive.google.com/drive/my-drive
+
+Access the folder Colab Notebooks/translangg/input
+
+Upload the media files (videos and audios) there
+
+#@title Download transcription model
+
+print(torch.cuda.is_available())
+model_type = 'large'
+model = whisper.load_model(model_type)
+model.device
+#@title Supported Languages
+
+lang_dict = {
+    'afrikaans': 'af', 'albanian': 'sq', 'amharic': 'am', 'arabic': 'ar', 'armenian': 'hy', 'azerbaijani': 'az',
+    'basque': 'eu', 'belarusian': 'be', 'bengali': 'bn', 'bosnian': 'bs', 'bulgarian': 'bg', 'catalan': 'ca',
+    'cebuano': 'ceb', 'chichewa': 'ny', 'chinese (simplified)': 'zh-cn', 'chinese (traditional)': 'zh-tw',
+    'corsican': 'co', 'croatian': 'hr', 'czech': 'cs', 'danish': 'da', 'dutch': 'nl', 'english': 'en', 'esperanto': 'eo',
+    'estonian': 'et', 'filipino': 'tl', 'finnish': 'fi', 'french': 'fr', 'frisian': 'fy', 'galician': 'gl',
+    'georgian': 'ka', 'german': 'de', 'greek': 'el', 'gujarati': 'gu', 'haitian creole': 'ht', 'hausa': 'ha',
+    'hawaiian': 'haw', 'hebrew': 'he', 'hindi': 'hi', 'hmong': 'hmn', 'hungarian': 'hu', 'icelandic': 'is',
+    'igbo': 'ig', 'indonesian': 'id', 'irish': 'ga', 'italian': 'it', 'japanese': 'ja', 'javanese': 'jw',
+    'kannada': 'kn', 'kazakh': 'kk', 'khmer': 'km', 'korean': 'ko', 'kurdish (kurmanji)': 'ku', 'kyrgyz': 'ky',
+    'lao': 'lo', 'latin': 'la', 'latvian': 'lv', 'lithuanian': 'lt', 'luxembourgish': 'lb', 'macedonian': 'mk',
+    'malagasy': 'mg', 'malay': 'ms', 'malayalam': 'ml', 'maltese': 'mt', 'maori': 'mi', 'marathi': 'mr',
+    'mongolian': 'mn', 'myanmar (burmese)': 'my', 'nepali': 'ne', 'norwegian': 'no', 'odia': 'or',
+    'pashto': 'ps', 'persian': 'fa', 'polish': 'pl', 'portuguese': 'pt', 'punjabi': 'pa', 'romanian': 'ro',
+    'russian': 'ru', 'samoan': 'sm', 'scots gaelic': 'gd', 'serbian': 'sr', 'sesotho': 'st', 'shona': 'sn',
+    'sindhi': 'sd', 'sinhala': 'si', 'slovak': 'sk', 'slovenian': 'sl', 'somali': 'so', 'spanish': 'es',
+    'sundanese': 'su', 'swahili': 'sw', 'swedish': 'sv', 'tajik': 'tg', 'tamil': 'ta', 'telugu': 'te',
+    'thai': 'th', 'turkish': 'tr', 'ukrainian': 'uk', 'urdu': 'ur', 'uyghur': 'ug', 'uzbek': 'uz',
+    'vietnamese': 'vi', 'welsh': 'cy', 'xhosa': 'xh', 'yiddish': 'yi', 'yoruba': 'yo'
+}
+
+#@title Make Transcription
+
+# Get media list to be transcript
+
+list_audiopath = [x for x in Path(path_folder_input).iterdir()]
+print('Existing media:' , ', '.join([x.stem for x in list_audiopath]))
+
+list_file_transcript = [x for x in Path(path_folder_output).iterdir()]
+print('Already transcripted:', ', '.join([x.stem for x in list_file_transcript]))
+
+list_newaudiopath = [x for x in list_audiopath if x.stem not in [y.stem for y in list_file_transcript]]
+print('To be transcripted:', ', '.join([x.stem for x in list_newaudiopath]))
+print()
+
+import logging
+
+# Get language input from the user
+while True:
+    user_language = input("Enter the language (e.g., English, Spanish, French): ").lower()
+
+    # Validate if the entered language is in the lang_dict
+    if user_language in lang_dict:
+        language_code = lang_dict[user_language]
+        break  # Exit the loop if a valid language is entered
+    else:
+        print(f"Language '{user_language}' is not supported. Please enter a valid language.")
+
+
+logging.basicConfig(filename='transcription.log', level=logging.INFO)
+
+for audio_path in tqdm(list_newaudiopath):
+    try:
+        start_time = datetime.now()
+        result = model.transcribe(str(audio_path), language=language_code)
+        time_elapsed = datetime.now() - start_time
+        filename = Path(audio_path).stem
+        print(f'Time elapsed: {str(time_elapsed)[:-7]}, {filename}')
+        logging.info(f'Time elapsed: {str(time_elapsed)[:-7]}, {filename}')
+
+        # save transcription
+        path_file_transcricao = Path(path_folder_output, filename + '.txt')
+        with open(path_file_transcricao, "w") as f:
+          f.write(result['text'])
+
+    except Exception as e:
+        logging.error(f"Error processing {audio_path}: {e}")
+#@title Generate and download a zip package of transcriptions
+os.system(f'zip -r transcript.zip "{path_folder_output}"')
+files.download("transcript.zip")
